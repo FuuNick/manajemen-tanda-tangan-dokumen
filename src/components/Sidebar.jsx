@@ -1,4 +1,3 @@
-// src/components/Sidebar.jsx
 import { NavLink } from 'react-router-dom'
 import {
   User as UserIcon,
@@ -13,16 +12,24 @@ import {
 } from 'lucide-react'
 
 export default function Sidebar({ user }) {
-  const avatar = user?.user_metadata?.avatar_url || 'https://ui-avatars.com/api/?name=User'
   const name = user?.user_metadata?.name || 'Pengguna'
+  const avatar = user?.user_metadata?.avatar_url?.trim()
+    ? user.user_metadata.avatar_url
+    : `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}`
 
   return (
     <aside className="w-64 bg-white shadow-md p-4 flex flex-col">
       {/* Profile */}
       <div className="flex items-center space-x-3 mb-6">
-        <img src={avatar} alt="Profile" className="w-12 h-12 rounded-full" />
+        <img
+          src={avatar}
+          alt="Profile"
+          className="w-12 h-12 rounded-full object-cover border"
+        />
         <div>
-          <span className="bg-green-100 text-green-600 text-xs font-semibold px-2 py-1 rounded-full">Free</span>
+          <span className="bg-green-100 text-green-600 text-xs font-semibold px-2 py-1 rounded-full">
+            Free
+          </span>
           <div className="text-sm font-medium text-gray-700">{name}</div>
         </div>
       </div>
@@ -30,22 +37,22 @@ export default function Sidebar({ user }) {
       {/* Menu Sections */}
       <div className="space-y-4">
         <MenuSection title="Profile">
-          <MenuItem icon={<UserIcon size={18} />} text="Akun Saya" path="akunsaya" />
-          <MenuItem icon={<ShieldCheck size={18} />} text="Keamanan" path="keamanan" />
-          <MenuItem icon={<Users size={18} />} text="Organisasi" path="organisasi" />
+          <MenuItem icon={<UserIcon size={18} />} text="Akun Saya" path="/akunsaya" />
+          <MenuItem icon={<ShieldCheck size={18} />} text="Keamanan" path="/keamanan" />
+          <MenuItem icon={<Users size={18} />} text="Organisasi" path="/organisasi" />
         </MenuSection>
 
         <MenuSection title="Aktivitas">
-          <MenuItem icon={<FileText size={18} />} text="Tugas Akhir" path="tugas-akhir" />
+          <MenuItem icon={<FileText size={18} />} text="Tugas Akhir" path="/tugas-akhir" />
         </MenuSection>
 
         <MenuSection title="Tanda Tangan">
-          <MenuItem icon={<PenTool size={18} />} text="Dashboard" path="dashboard" />
-          <MenuItem icon={<Send size={18} />} text="Terkirim" path="terkirim" />
-          <MenuItem icon={<Inbox size={18} />} text="Inbox" path="inbox" />
-          <MenuItem icon={<ShieldCheck size={18} />} text="Tertandatangani" path="tertandatangani" />
-          <MenuItem icon={<Contact size={18} />} text="Kontak" path="kontak" />
-          <MenuItem icon={<Settings size={18} />} text="Pengaturan" path="pengaturan" />
+          <MenuItem icon={<PenTool size={18} />} text="Dashboard" path="/dashboard" />
+          <MenuItem icon={<Send size={18} />} text="Terkirim" path="/terkirim" />
+          <MenuItem icon={<Inbox size={18} />} text="Inbox" path="/inbox" />
+          <MenuItem icon={<ShieldCheck size={18} />} text="Tertandatangani" path="/tertandatangani" />
+          <MenuItem icon={<Contact size={18} />} text="Kontak" path="/kontak" />
+          <MenuItem icon={<Settings size={18} />} text="Pengaturan" path="/pengaturan" />
         </MenuSection>
       </div>
     </aside>
@@ -79,4 +86,3 @@ function MenuItem({ icon, text, path }) {
     </NavLink>
   )
 }
-

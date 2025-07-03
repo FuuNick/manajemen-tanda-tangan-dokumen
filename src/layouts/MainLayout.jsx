@@ -1,23 +1,32 @@
-// src/layouts/MainLayout.jsx
-import { useState } from 'react'
-import { Outlet } from 'react-router-dom'
-
+import { useEffect, useState } from 'react'
+import { Outlet, useNavigate } from 'react-router-dom'
+import { supabase } from '../service/supabase'
 import Sidebar from '../components/Sidebar'
 import Navbar from '../components/Navbar'
 
 export default function MainLayout() {
-  // Data dummy user
-  const [user] = useState({
-    email: 'dummy@example.com',
-    user_metadata: {
-      name: 'Pengguna Dummy',
-      avatar_url: 'https://ui-avatars.com/api/?name=Dummy'
-    }
-  })
+  const [user, setUser] = useState(null)
+  const navigate = useNavigate()
 
-  const handleLogout = () => {
-    alert('Logout clicked (dummy)')
+  useEffect(() => {
+    const getUser = async () => {
+      const { data, error } = await supabase.auth.getUser()
+      if (error || !data.user) {
+        navigate('/login') // redirect kalau belum login
+      } else {
+        setUser(data.user)
+      }
+    }
+
+    getUser()
+  }, [])
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
+    navigate('/login')
   }
+
+  if (!user) return null // atau tampilkan loading spinner
 
   return (
     <div className="flex h-screen bg-gray-100">
