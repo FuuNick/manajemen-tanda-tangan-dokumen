@@ -1,140 +1,159 @@
-// src/signatures/ChooseSignerPage.jsx
-import { useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import React, { useEffect, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { supabase } from '../service/supabase'
+import { v4 as uuidv4 } from 'uuid'
+import Navbar from '../components/Navbar'
 
 export default function ChooseSignerPage() {
-  const { id } = useParams() // id dokumen
+  const { state } = useLocation()
   const navigate = useNavigate()
-  const [users, setUsers] = useState([])
-  const [externalSigners, setExternalSigners] = useState([{ name: '', email: '', whatsapp: '' }])
-  const [selectedUserIds, setSelectedUserIds] = useState([])
+
+  const [user, setUser] = useState(null)
+  const [userProfile, setUserProfile] = useState(null)
+  const [signSelf, setSignSelf] = useState(true)
+  const [externalSigner, setExternalSigner] = useState({ name: '', email: '', whatsapp: '' })
   const [loading, setLoading] = useState(false)
 
+  const documentId = state?.documentId
+
   useEffect(() => {
-    const fetchUsers = async () => {
-      const { data } = await supabase.from('user_profiles').select('user_id, name')
-      setUsers(data || [])
+    const fetchUser = async () => {
+      const { data: authData } = await supabase.auth.getUser()
+      const user = authData?.user
+      if (!user) return navigate('/login')
+      setUser(user)
+
+      const { data: profile } = await supabase
+        .from('user_profiles')
+        .select('*')
+        .eq('user_id', user.id)
+        .single()
+      if (profile) setUserProfile(profile)
     }
-    fetchUsers()
-  }, [])
 
-  const handleCheckbox = (userId) => {
-    setSelectedUserIds((prev) =>
-      prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]
-    )
-  }
+    fetchUser()
+  }, [navigate])
 
-  const handleExternalChange = (index, field, value) => {
-    const newList = [...externalSigners]
-    newList[index][field] = value
-    setExternalSigners(newList)
-  }
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    if (!documentId || !user) {
+      alert('Data tidak lengkap.')
+      return
+    }
 
-  const addExternalField = () => {
-    setExternalSigners([...externalSigners, { name: '', email: '', whatsapp: '' }])
-  }
-
-  const handleSubmit = async () => {
     setLoading(true)
+
     try {
-      // Simpan internal signer
-      const internalInserts = selectedUserIds.map((userId) => ({
-        document_id: id,
-        signer_user_id: userId,
-      }))
+      const signers = []
 
-      // Simpan eksternal signer terlebih dahulu ke table `external_signers`
-      const { data: insertedExternal, error } = await supabase
-        .from('external_signers')
-        .insert(externalSigners.filter(s => s.email))
-        .select()
+      if (signSelf) {
+        signers.push({
+          id: uuidv4(),
+          document_id: documentId,
+          signer_user_id: user.id,
+          signing_order: 1,
+        })
+      }
 
-      if (error) throw error
+      if (externalSigner.name && externalSigner.email) {
+        const { data: extData, error: extErr } = await supabase
+          .from('external_signers')
+          .insert([{
+            id: uuidv4(),
+            name: externalSigner.name,
+            email: externalSigner.email,
+            whatsapp: externalSigner.whatsapp,
+          }])
+          .select()
+          .single()
 
-      const externalInserts = insertedExternal.map((s) => ({
-        document_id: id,
-        external_signer_id: s.id,
-      }))
+        if (extErr) throw extErr
 
-      const signersInsert = [...internalInserts, ...externalInserts]
+        signers.push({
+          id: uuidv4(),
+          document_id: documentId,
+          external_signer_id: extData.id,
+          signing_order: signSelf ? 2 : 1,
+        })
+      }
 
-      await supabase.from('document_signers').insert(signersInsert)
+      if (signers.length === 0) {
+        alert('Pilih setidaknya satu penandatangan.')
+        return
+      }
 
-      navigate(`/set-signature/${id}`)
-    } catch (err) {
-      alert('Gagal menyimpan penandatangan: ' + err.message)
+      const { error: signerError } = await supabase.from('document_signers').insert(signers)
+      if (signerError) throw signerError
+
+      navigate('/set-signature-position', { state: { documentId } })
+    } catch (error) {
+      console.error(error)
+      alert('Gagal menyimpan penandatangan.')
     } finally {
       setLoading(false)
     }
   }
 
-  return (
-    <div className="max-w-3xl mx-auto p-6 bg-white rounded shadow">
-      <h2 className="text-2xl font-bold mb-4">Pilih Penandatangan</h2>
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
+    navigate('/login')
+  }
 
-      <div className="mb-6">
-        <h3 className="text-lg font-semibold mb-2">Pengguna Terdaftar</h3>
-        <ul className="space-y-2">
-          {users.map((user) => (
-            <li key={user.user_id} className="flex items-center">
+  return (
+    <div className="min-h-screen bg-gray-100">
+      <Navbar user={user} userProfile={userProfile} onLogout={handleLogout} />
+      <main className="max-w-2xl mx-auto p-6 mt-10 bg-white rounded shadow">
+        <h1 className="text-2xl font-semibold mb-4">Pilih Penandatangan</h1>
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div>
+            <label className="flex items-center space-x-2">
               <input
                 type="checkbox"
-                checked={selectedUserIds.includes(user.user_id)}
-                onChange={() => handleCheckbox(user.user_id)}
-                className="mr-2"
+                checked={signSelf}
+                onChange={() => setSignSelf(!signSelf)}
               />
-              <span>{user.name}</span>
-            </li>
-          ))}
-        </ul>
-      </div>
-
-      <div className="mb-6">
-        <h3 className="text-lg font-semibold mb-2">Penandatangan Eksternal</h3>
-        {externalSigners.map((signer, index) => (
-          <div key={index} className="grid grid-cols-3 gap-4 mb-2">
-            <input
-              type="text"
-              placeholder="Nama"
-              value={signer.name}
-              onChange={(e) => handleExternalChange(index, 'name', e.target.value)}
-              className="border px-2 py-1 rounded"
-            />
-            <input
-              type="email"
-              placeholder="Email"
-              value={signer.email}
-              onChange={(e) => handleExternalChange(index, 'email', e.target.value)}
-              className="border px-2 py-1 rounded"
-            />
-            <input
-              type="text"
-              placeholder="No WhatsApp"
-              value={signer.whatsapp}
-              onChange={(e) => handleExternalChange(index, 'whatsapp', e.target.value)}
-              className="border px-2 py-1 rounded"
-            />
+              <span>Saya akan menandatangani dokumen ini</span>
+            </label>
           </div>
-        ))}
-        <button
-          type="button"
-          onClick={addExternalField}
-          className="text-sm text-blue-600 mt-2 hover:underline"
-        >
-          + Tambah Penandatangan Eksternal
-        </button>
-      </div>
 
-      <div className="flex justify-end">
-        <button
-          onClick={handleSubmit}
-          disabled={loading}
-          className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
-        >
-          {loading ? 'Menyimpan...' : 'Lanjut ke Penempatan Tanda Tangan'}
-        </button>
-      </div>
+          <div>
+            <h2 className="font-medium text-lg mb-2">Undang Penandatangan Eksternal (Opsional)</h2>
+            <div className="space-y-2">
+              <input
+                type="text"
+                placeholder="Nama Lengkap"
+                className="w-full px-4 py-2 border rounded"
+                value={externalSigner.name}
+                onChange={(e) => setExternalSigner({ ...externalSigner, name: e.target.value })}
+              />
+              <input
+                type="email"
+                placeholder="Email"
+                className="w-full px-4 py-2 border rounded"
+                value={externalSigner.email}
+                onChange={(e) => setExternalSigner({ ...externalSigner, email: e.target.value })}
+              />
+              <input
+                type="text"
+                placeholder="No WhatsApp (opsional)"
+                className="w-full px-4 py-2 border rounded"
+                value={externalSigner.whatsapp}
+                onChange={(e) => setExternalSigner({ ...externalSigner, whatsapp: e.target.value })}
+              />
+            </div>
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className={`w-full py-3 text-white font-semibold rounded ${
+              loading ? 'bg-gray-400' : 'bg-green-600 hover:bg-green-700'
+            } transition`}
+          >
+            {loading ? 'Menyimpan...' : 'Lanjut ke Penempatan Tanda Tangan'}
+          </button>
+        </form>
+      </main>
     </div>
   )
 }
