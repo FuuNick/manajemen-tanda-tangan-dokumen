@@ -3,13 +3,18 @@ import { useRef, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Bell, LogOut, Settings, User as UserIcon } from 'lucide-react'
 
-export default function Navbar({ user, onLogout }) {
+export default function Navbar({ user, userProfile, onLogout }) {
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const dropdownRef = useRef(null)
 
-  const avatar = user?.user_metadata?.avatar_url || 'https://ui-avatars.com/api/?name=User'
-  const name = user?.user_metadata?.name || 'Pengguna'
+  // fallback ke auth.user jika userProfile belum dimuat
+  const name = userProfile?.name || user?.user_metadata?.name || 'Pengguna'
   const email = user?.email || 'user@example.com'
+  const avatarRaw = userProfile?.photo_url?.trim() || user?.user_metadata?.avatar_url?.trim()
+
+  const avatar = avatarRaw
+    ? `${avatarRaw}?v=${Date.now()}`
+    : `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -34,7 +39,7 @@ export default function Navbar({ user, onLogout }) {
           <img
             src={avatar}
             alt="Profile"
-            className="w-8 h-8 rounded-full cursor-pointer"
+            className="w-8 h-8 rounded-full cursor-pointer object-cover"
             onClick={() => setDropdownOpen(!dropdownOpen)}
           />
           {dropdownOpen && (

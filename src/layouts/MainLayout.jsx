@@ -1,6 +1,5 @@
-// src/layouts/MainLayout.jsx
-import { Outlet } from 'react-router-dom'
 import { useEffect, useState } from 'react'
+import { Outlet, useNavigate } from 'react-router-dom'
 import { supabase } from '../service/supabase'
 import Navbar from '../components/Navbar'
 import Sidebar from '../components/Sidebar'
@@ -8,33 +7,53 @@ import Sidebar from '../components/Sidebar'
 export default function MainLayout() {
   const [user, setUser] = useState(null)
   const [userProfile, setUserProfile] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const navigate = useNavigate()
 
   useEffect(() => {
-    const getUser = async () => {
-      const { data: userData } = await supabase.auth.getUser()
-      const user = userData?.user
+    const getUserAndProfile = async () => {
+      const { data: authData, error: authError } = await supabase.auth.getUser()
+      const user = authData?.user
+
+      if (authError || !user) {
+        navigate('/login') // redirect jika tidak login
+        return
+      }
+
       setUser(user)
 
-      if (user?.id) {
-        const { data, error } = await supabase
-          .from('user_profiles')
-          .select('*')
-          .eq('user_id', user.id)
-          .single()
-        if (data) setUserProfile(data)
+      const { data: profile, error: profileError } = await supabase
+        .from('user_profiles')
+        .select('*')
+        .eq('user_id', user.id)
+        .single()
+
+      if (profile && !profileError) {
+        setUserProfile(profile)
       }
+
+      setLoading(false)
     }
-    getUser()
-  }, [])
+
+    getUserAndProfile()
+  }, [navigate])
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
-    window.location.href = '/login'
+    navigate('/login')
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <p className="text-gray-600 text-lg">Memuat data...</p>
+      </div>
+    )
   }
 
   return (
     <div className="flex flex-col min-h-screen">
-      <Navbar user={user} onLogout={handleLogout} />
+      <Navbar user={user} userProfile={userProfile} onLogout={handleLogout} />
       <div className="flex flex-1">
         <Sidebar user={user} userProfile={userProfile} />
         <main className="flex-1 p-6 bg-gray-50 overflow-y-auto">

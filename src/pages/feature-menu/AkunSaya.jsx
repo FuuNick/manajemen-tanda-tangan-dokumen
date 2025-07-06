@@ -7,7 +7,9 @@ export default function AkunSaya() {
     wa_number: '',
     photo_url: '',
     personal_signature: '',
+    email: '',
   })
+  const [isEditing, setIsEditing] = useState(false)
   const [loading, setLoading] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState(null)
@@ -16,9 +18,7 @@ export default function AkunSaya() {
   useEffect(() => {
     const fetchProfile = async () => {
       setLoading(true)
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
+      const { data: { user }, error: userError } = await supabase.auth.getUser()
       if (!user) {
         setError('User tidak ditemukan')
         setLoading(false)
@@ -33,15 +33,17 @@ export default function AkunSaya() {
 
       if (error && error.code !== 'PGRST116') {
         setError('Gagal mengambil profil: ' + error.message)
-      } else if (data) {
+      }
+
+      if (data) {
         setProfile({
           name: data.name || '',
           wa_number: data.wa_number || '',
           photo_url: data.photo_url || '',
           personal_signature: data.personal_signature || '',
+          email: user.email || '',
         })
       } else {
-        // Insert profil kosong jika belum ada
         await supabase.from('user_profiles').insert({
           user_id: user.id,
           name: '',
@@ -49,7 +51,9 @@ export default function AkunSaya() {
           photo_url: '',
           personal_signature: '',
         })
+        setProfile((prev) => ({ ...prev, email: user.email || '' }))
       }
+
       setLoading(false)
     }
     fetchProfile()
@@ -59,9 +63,7 @@ export default function AkunSaya() {
     try {
       setUploading(true)
       setError(null)
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
+      const { data: { user } } = await supabase.auth.getUser()
       const userId = user?.id
       if (!userId) throw new Error('User tidak ditemukan')
 
@@ -69,9 +71,8 @@ export default function AkunSaya() {
       const fileName = `avatar_${userId}.${fileExt}`
       const filePath = `${fileName}`
 
-      // Hapus lama jika ada
       if (profile.photo_url) {
-        const oldFileName = profile.photo_url.split('/').pop()
+        const oldFileName = profile.photo_url.split('/').pop().split('?')[0]
         await supabase.storage.from('avatar').remove([oldFileName])
       }
 
@@ -84,10 +85,12 @@ export default function AkunSaya() {
       const { data: urlData, error: urlError } = supabase.storage
         .from('avatar')
         .getPublicUrl(filePath)
-
       if (urlError) throw urlError
 
-      setProfile((prev) => ({ ...prev, photo_url: urlData.publicUrl }))
+      setProfile((prev) => ({
+        ...prev,
+        photo_url: `${urlData.publicUrl}?v=${Date.now()}`
+      }))
     } catch (err) {
       setError('Gagal upload file: ' + err.message)
     } finally {
@@ -104,9 +107,7 @@ export default function AkunSaya() {
     setLoading(true)
     setError(null)
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
+      const { data: { user } } = await supabase.auth.getUser()
       const userId = user?.id
       if (!userId) throw new Error('User tidak ditemukan')
 
@@ -125,7 +126,7 @@ export default function AkunSaya() {
 
       if (upsertError) throw upsertError
 
-      alert('Profil berhasil disimpan')
+      setIsEditing(false)
     } catch (err) {
       setError('Gagal menyimpan profil: ' + err.message)
     } finally {
@@ -136,88 +137,131 @@ export default function AkunSaya() {
   if (loading) return <p className="text-center mt-10">Memuat profil...</p>
 
   return (
-    <div className="max-w-lg mx-auto p-6 bg-white rounded shadow">
-      <h2 className="text-2xl font-semibold mb-6">Profil Saya</h2>
+    <div className="px-6 mt-6">
+      <h1 className="text-3xl font-bold mb-6">Akun Saya</h1>
 
-      {error && <p className="text-red-600 mb-4">{error}</p>}
+      <div className="bg-white p-6 rounded shadow max-w-xl">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-semibold">Profil</h2>
+          {!isEditing && (
+            <button
+              onClick={() => setIsEditing(true)}
+              className="text-blue-600 hover:underline text-sm"
+            >
+              Edit
+            </button>
+          )}
+        </div>
 
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="flex flex-col items-center">
-          {profile.photo_url ? (
-            <img
-              src={profile.photo_url}
-              alt="Foto Profil"
-              className="w-24 h-24 rounded-full object-cover mb-2"
-            />
-          ) : (
-            <div className="w-24 h-24 rounded-full bg-gray-300 mb-2 flex items-center justify-center text-gray-600">
-              No Photo
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="flex flex-col items-center">
+            {profile.photo_url ? (
+              <img
+                src={profile.photo_url}
+                alt="Foto Profil"
+                className="w-24 h-24 rounded-full object-cover mb-2"
+              />
+            ) : (
+              <div className="w-24 h-24 rounded-full bg-gray-300 mb-2 flex items-center justify-center text-gray-600">
+                No Photo
+              </div>
+            )}
+
+            {isEditing && (
+              <>
+                <button
+                  type="button"
+                  disabled={uploading}
+                  onClick={() => fileInputRef.current.click()}
+                  className="text-sm text-blue-600 hover:underline"
+                >
+                  {uploading ? 'Mengupload...' : 'Ubah Foto Profil'}
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    if (e.target.files && e.target.files[0]) {
+                      uploadPhoto(e.target.files[0])
+                    }
+                  }}
+                />
+              </>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1">Nama</label>
+            {isEditing ? (
+              <input
+                type="text"
+                name="name"
+                value={profile.name}
+                onChange={handleChange}
+                className="w-full border rounded px-3 py-2"
+              />
+            ) : (
+              <p>{profile.name || '-'}</p>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1">Email</label>
+            <p>{profile.email || '-'}</p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1">Nomor WhatsApp</label>
+            {isEditing ? (
+              <input
+                type="text"
+                name="wa_number"
+                value={profile.wa_number}
+                onChange={handleChange}
+                className="w-full border rounded px-3 py-2"
+              />
+            ) : (
+              <p>{profile.wa_number || '-'}</p>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1">Tanda Tangan Pribadi</label>
+            {isEditing ? (
+              <textarea
+                name="personal_signature"
+                value={profile.personal_signature}
+                onChange={handleChange}
+                className="w-full border rounded px-3 py-2"
+              />
+            ) : (
+              <p>{profile.personal_signature || '-'}</p>
+            )}
+          </div>
+
+          {isEditing && (
+            <div className="flex justify-end gap-3 mt-4">
+              <button
+                type="button"
+                onClick={() => setIsEditing(false)}
+                className="px-4 py-2 border border-gray-400 rounded"
+              >
+                Batal
+              </button>
+              <button
+                type="submit"
+                className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
+              >
+                Simpan Perubahan
+              </button>
             </div>
           )}
-          <button
-            type="button"
-            disabled={uploading}
-            onClick={() => fileInputRef.current.click()}
-            className="text-sm text-blue-600 hover:underline"
-          >
-            {uploading ? 'Mengupload...' : 'Ubah Foto Profil'}
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={(e) => {
-              if (e.target.files && e.target.files[0]) {
-                uploadPhoto(e.target.files[0])
-              }
-            }}
-          />
-        </div>
+        </form>
 
-        <div>
-          <label className="block mb-1 font-medium">Nama</label>
-          <input
-            type="text"
-            name="name"
-            value={profile.name}
-            onChange={handleChange}
-            className="w-full border rounded px-3 py-2 focus:outline-none focus:ring focus:ring-blue-400"
-            required
-          />
-        </div>
-
-        <div>
-          <label className="block mb-1 font-medium">Nomor WhatsApp</label>
-          <input
-            type="text"
-            name="wa_number"
-            value={profile.wa_number}
-            onChange={handleChange}
-            className="w-full border rounded px-3 py-2 focus:outline-none focus:ring focus:ring-blue-400"
-          />
-        </div>
-
-        <div>
-          <label className="block mb-1 font-medium">Tanda Tangan Pribadi</label>
-          <textarea
-            name="personal_signature"
-            value={profile.personal_signature}
-            onChange={handleChange}
-            rows={3}
-            placeholder="Tulis tanda tangan atau base64 gambar"
-            className="w-full border rounded px-3 py-2 focus:outline-none focus:ring focus:ring-blue-400"
-          />
-        </div>
-
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full bg-green-600 text-white py-2 rounded hover:bg-green-700 transition"
-        >
-          {loading ? 'Menyimpan...' : 'Simpan Perubahan'}
-        </button>
-      </form>
+        {error && <p className="text-red-600 mt-4">{error}</p>}
+      </div>
     </div>
   )
 }
