@@ -15,6 +15,7 @@ export default function ChooseSignerPage() {
   const [loading, setLoading] = useState(false)
 
   const documentId = state?.documentId
+  const filePath = state?.filePath // ✅ Pastikan filePath ikut diterima
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -28,6 +29,7 @@ export default function ChooseSignerPage() {
         .select('*')
         .eq('user_id', user.id)
         .single()
+
       if (profile) setUserProfile(profile)
     }
 
@@ -36,6 +38,7 @@ export default function ChooseSignerPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+
     if (!documentId || !user) {
       alert('Data tidak lengkap.')
       return
@@ -46,6 +49,7 @@ export default function ChooseSignerPage() {
     try {
       const signers = []
 
+      // ✅ Tambahkan diri sendiri jika dicentang
       if (signSelf) {
         signers.push({
           id: uuidv4(),
@@ -55,6 +59,7 @@ export default function ChooseSignerPage() {
         })
       }
 
+      // ✅ Tambahkan signer eksternal jika diisi
       if (externalSigner.name && externalSigner.email) {
         const { data: extData, error: extErr } = await supabase
           .from('external_signers')
@@ -85,7 +90,10 @@ export default function ChooseSignerPage() {
       const { error: signerError } = await supabase.from('document_signers').insert(signers)
       if (signerError) throw signerError
 
-      navigate('/set-signature-position', { state: { documentId } })
+      // ✅ Redirect ke halaman penempatan tanda tangan, kirim juga filePath
+      navigate('/set-signature-position', {
+        state: { documentId, filePath }
+      })
     } catch (error) {
       console.error(error)
       alert('Gagal menyimpan penandatangan.')

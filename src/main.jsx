@@ -1,17 +1,18 @@
+// src/main.jsx
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App'
-import './index.css' 
-import { pdfjs } from 'react-pdf'
+import './index.css'
 import { DndProvider } from 'react-dnd'
 import { HTML5Backend } from 'react-dnd-html5-backend'
-
+import { pdfjs } from 'react-pdf'
 
 pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`
+
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <DndProvider backend={HTML5Backend}>
       <App />
     </DndProvider>
   </React.StrictMode>
-);
+)

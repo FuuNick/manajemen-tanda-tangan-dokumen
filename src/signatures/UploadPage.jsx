@@ -79,7 +79,7 @@ export default function UploadPage() {
 
       if (insertError) throw insertError
 
-      navigate('/pdfview', {
+      navigate('/choose-signer', {
         state: { documentId, filePath },
       })
     } catch (error) {
