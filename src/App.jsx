@@ -5,11 +5,11 @@ import Guest from './pages/auth/Guest'
 import Login from './pages/auth/Login'
 import Register from './pages/auth/Register'
 
-// Layout dan route proteksi
+// Layout & Protected
 import PrivateRoute from './components/PrivateRoute'
 import MainLayout from './layouts/MainLayout'
 
-// Feature pages (dalam layout setelah login)
+// Feature menu inside layout
 import AkunSaya from './pages/feature-menu/AkunSaya'
 import Dashboard from './pages/feature-menu/Dashboard'
 import Kontak from './pages/feature-menu/Kontak'
@@ -21,11 +21,16 @@ import Inbox from './pages/feature-menu/Inbox'
 import TertandaTangan from './pages/feature-menu/TertandaTangan'
 import Pengaturan from './pages/feature-menu/Pengaturan'
 
+// Signature flow (di luar layout)
+import UploadPage from './signatures/UploadPage'
+import ChooseSignerPage from './signatures/ChooseSignerPage'
+import DownloadDocumentPage from './signatures/DownloadDocumentPage'
+
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Layout utama, proteksi via PrivateRoute */}
+        {/* Layout dengan sidebar/navbar */}
         <Route
           path="/home"
           element={
@@ -46,7 +51,33 @@ export default function App() {
           <Route path="pengaturan" element={<Pengaturan />} />
         </Route>
 
-        {/* Public routes */}
+        {/* Halaman tanda tangan dokumen - HALAMAN PENUH (tidak pakai MainLayout) */}
+        <Route
+          path="/upload"
+          element={
+            <PrivateRoute>
+              <UploadPage />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/choose-signer/"
+          element={
+            <PrivateRoute>
+              <ChooseSignerPage />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/download-document/:documentId"
+          element={
+            <PrivateRoute>
+              <DownloadDocumentPage />
+            </PrivateRoute>
+          }
+        />
+
+        {/* Public pages */}
         <Route path="/" element={<Guest />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />

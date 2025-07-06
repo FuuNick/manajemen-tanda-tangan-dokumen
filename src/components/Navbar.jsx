@@ -1,13 +1,12 @@
-// src/components/Navbar.jsx
 import { useRef, useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { Bell, LogOut, Settings, User as UserIcon } from 'lucide-react'
+import { Link, useNavigate } from 'react-router-dom'
+import { LogOut, Settings, User as UserIcon, UploadCloud } from 'lucide-react'
 
 export default function Navbar({ user, userProfile, onLogout }) {
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const dropdownRef = useRef(null)
+  const navigate = useNavigate()
 
-  // fallback ke auth.user jika userProfile belum dimuat
   const name = userProfile?.name || user?.user_metadata?.name || 'Pengguna'
   const email = user?.email || 'user@example.com'
   const avatarRaw = userProfile?.photo_url?.trim() || user?.user_metadata?.avatar_url?.trim()
@@ -32,9 +31,13 @@ export default function Navbar({ user, userProfile, onLogout }) {
     <header className="bg-white shadow px-6 py-4 flex items-center justify-between relative">
       <h1 className="text-2xl font-bold text-green-600 font-serif tracking-wide">Signature</h1>
       <div className="flex items-center space-x-4 relative">
-        <div className="relative">
-          <Bell size={20} className="text-gray-600" />
-        </div>
+        <button
+          onClick={() => navigate('/upload')}
+          className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm font-medium rounded hover:bg-green-700 transition"
+        >
+          <UploadCloud size={16} />
+          Upload Dokumen
+        </button>
         <div className="relative" ref={dropdownRef}>
           <img
             src={avatar}
