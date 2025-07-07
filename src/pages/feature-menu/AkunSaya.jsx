@@ -6,7 +6,6 @@ export default function AkunSaya() {
     name: '',
     wa_number: '',
     photo_url: '',
-    personal_signature: '',
     email: '',
   })
   const [isEditing, setIsEditing] = useState(false)
@@ -18,7 +17,7 @@ export default function AkunSaya() {
   useEffect(() => {
     const fetchProfile = async () => {
       setLoading(true)
-      const { data: { user }, error: userError } = await supabase.auth.getUser()
+      const { data: { user } } = await supabase.auth.getUser()
       if (!user) {
         setError('User tidak ditemukan')
         setLoading(false)
@@ -40,7 +39,6 @@ export default function AkunSaya() {
           name: data.name || '',
           wa_number: data.wa_number || '',
           photo_url: data.photo_url || '',
-          personal_signature: data.personal_signature || '',
           email: user.email || '',
         })
       } else {
@@ -49,7 +47,6 @@ export default function AkunSaya() {
           name: '',
           wa_number: '',
           photo_url: '',
-          personal_signature: '',
         })
         setProfile((prev) => ({ ...prev, email: user.email || '' }))
       }
@@ -116,7 +113,6 @@ export default function AkunSaya() {
         name: profile.name,
         wa_number: profile.wa_number,
         photo_url: profile.photo_url,
-        personal_signature: profile.personal_signature,
         updated_at: new Date().toISOString(),
       }
 
@@ -136,47 +132,55 @@ export default function AkunSaya() {
 
   if (loading) return <p className="text-center mt-10">Memuat profil...</p>
 
+  const renderField = (label, name, type = 'text') => (
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+      <label className="text-sm font-medium text-gray-700">{label}</label>
+      <div className="md:col-span-2">
+        {isEditing ? (
+          <input
+            type={type}
+            name={name}
+            value={profile[name]}
+            onChange={handleChange}
+            className="w-full border rounded px-3 py-2 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+            disabled={name === 'email'}
+          />
+        ) : (
+          <p className="text-gray-800">{profile[name] || '-'}</p>
+        )}
+      </div>
+    </div>
+  )
+
   return (
-    <div className="px-6 mt-6">
-      <h1 className="text-3xl font-bold mb-6">Akun Saya</h1>
+    <div className="px-4 sm:px-6 mt-6">
+      <h1 className="text-3xl font-bold mb-6 max-w-xl">Akun Saya</h1>
 
-      <div className="bg-white p-6 rounded shadow max-w-xl">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-semibold">Profil</h2>
-          {!isEditing && (
-            <button
-              onClick={() => setIsEditing(true)}
-              className="text-blue-600 hover:underline text-sm"
-            >
-              Edit
-            </button>
-          )}
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="flex flex-col items-center">
+      <div className="bg-white p-6 rounded-lg shadow-md max-w-xl">
+        {/* Foto Profil */}
+        <div className="flex flex-col items-center mb-8">
+          <div className="relative">
             {profile.photo_url ? (
               <img
                 src={profile.photo_url}
                 alt="Foto Profil"
-                className="w-24 h-24 rounded-full object-cover mb-2"
+                className="w-28 h-28 rounded-full object-cover border-4 border-blue-500 shadow-lg"
               />
             ) : (
-              <div className="w-24 h-24 rounded-full bg-gray-300 mb-2 flex items-center justify-center text-gray-600">
+              <div className="w-28 h-28 rounded-full bg-gray-300 flex items-center justify-center text-gray-600 text-lg font-semibold border-4 border-blue-500 shadow-lg">
                 No Photo
               </div>
             )}
-
             {isEditing && (
-              <>
-                <button
-                  type="button"
-                  disabled={uploading}
-                  onClick={() => fileInputRef.current.click()}
-                  className="text-sm text-blue-600 hover:underline"
-                >
-                  {uploading ? 'Mengupload...' : 'Ubah Foto Profil'}
-                </button>
+              <button
+                type="button"
+                disabled={uploading}
+                onClick={() => fileInputRef.current.click()}
+                className="absolute bottom-0 right-0 bg-blue-600 text-white p-2 rounded-full shadow-md hover:bg-blue-700 transition"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                  <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+                </svg>
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -188,73 +192,35 @@ export default function AkunSaya() {
                     }
                   }}
                 />
-              </>
+              </button>
             )}
           </div>
+          <h3 className="mt-4 text-xl font-semibold text-gray-900">{profile.name || 'Nama Belum Diatur'}</h3>
+          <p className="text-gray-600 text-sm">{profile.email}</p>
+        </div>
 
-          <div>
-            <label className="block text-sm font-medium mb-1">Nama</label>
-            {isEditing ? (
-              <input
-                type="text"
-                name="name"
-                value={profile.name}
-                onChange={handleChange}
-                className="w-full border rounded px-3 py-2"
-              />
-            ) : (
-              <p>{profile.name || '-'}</p>
-            )}
-          </div>
+        <hr className="my-6 border-gray-200" />
 
-          <div>
-            <label className="block text-sm font-medium mb-1">Email</label>
-            <p>{profile.email || '-'}</p>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium mb-1">Nomor WhatsApp</label>
-            {isEditing ? (
-              <input
-                type="text"
-                name="wa_number"
-                value={profile.wa_number}
-                onChange={handleChange}
-                className="w-full border rounded px-3 py-2"
-              />
-            ) : (
-              <p>{profile.wa_number || '-'}</p>
-            )}
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium mb-1">Tanda Tangan Pribadi</label>
-            {isEditing ? (
-              <textarea
-                name="personal_signature"
-                value={profile.personal_signature}
-                onChange={handleChange}
-                className="w-full border rounded px-3 py-2"
-              />
-            ) : (
-              <p>{profile.personal_signature || '-'}</p>
-            )}
-          </div>
+        <form onSubmit={handleSubmit} className="space-y-6">
+          {renderField('Nama Lengkap', 'name')}
+          {renderField('Email', 'email', 'email')}
+          {renderField('Nomor WhatsApp', 'wa_number')}
 
           {isEditing && (
-            <div className="flex justify-end gap-3 mt-4">
+            <div className="flex justify-end gap-3 mt-8">
               <button
                 type="button"
                 onClick={() => setIsEditing(false)}
-                className="px-4 py-2 border border-gray-400 rounded"
+                className="px-6 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition"
               >
                 Batal
               </button>
               <button
                 type="submit"
-                className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
+                disabled={loading || uploading}
+                className="bg-green-600 text-white px-6 py-2 rounded-md hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Simpan Perubahan
+                {loading ? 'Menyimpan...' : 'Simpan'}
               </button>
             </div>
           )}
@@ -262,6 +228,18 @@ export default function AkunSaya() {
 
         {error && <p className="text-red-600 mt-4">{error}</p>}
       </div>
+
+      {!isEditing && (
+        <button
+          onClick={() => setIsEditing(true)}
+          className="fixed bottom-6 right-6 bg-blue-600 text-white p-4 rounded-full shadow-lg hover:bg-blue-700 transition focus:outline-none focus:ring-2 focus:ring-blue-500"
+          aria-label="Edit Profil"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 20 20" fill="currentColor">
+            <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+          </svg>
+        </button>
+      )}
     </div>
   )
 }

@@ -1,171 +1,194 @@
 // src/pages/SetSignaturePositionPage.jsx
-import { useDrag } from 'react-dnd'
 import React, { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { supabase } from '../service/supabase'
-import Navbar from '../components/Navbar'
 import { pdfjs } from 'react-pdf'
 import { Rnd } from 'react-rnd'
-import { useDrop } from 'react-dnd'
+import Navbar from '../components/Navbar'
 
 pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`
-
-const ELEMENTS = [
-  { key: 'signature', label: 'Tanda Tangan', required: true },
-  { key: 'initial', label: 'Inisial' },
-  { key: 'name', label: 'Nama' },
-  { key: 'date', label: 'Tanggal' },
-  { key: 'text', label: 'Teks' },
-  { key: 'stamp', label: 'Stempel Perusahaan' },
-]
 
 export default function SetSignaturePositionPage() {
   const navigate = useNavigate()
   const { documentId, filePath } = useLocation().state || {}
   const [fileUrl, setFileUrl] = useState(null)
   const [pdfDoc, setPdfDoc] = useState(null)
-  const canvasRefs = useRef([])
   const [numPages, setNumPages] = useState(0)
+  const canvasRefs = useRef([])
   const [placeholders, setPlaceholders] = useState([])
-  const [user, setUser] = useState(null)
-  const [userProfile, setUserProfile] = useState(null)
+  const [signers, setSigners] = useState([])
+  const [selectedSigner, setSelectedSigner] = useState(null)
+  const [currentPage, setCurrentPage] = useState(1)
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      if (data.user) {
-        setUser(data.user)
-        supabase
-          .from('user_profiles')
-          .select('*').eq('user_id', data.user.id).single()
-          .then(({ data: prof }) => setUserProfile(prof))
-      }
-    })
+    const init = async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      if (!user) return navigate('/login')
 
-    if (!filePath) return navigate('/home/dashboard')
+      const { data: profile } = await supabase
+        .from('user_profiles')
+        .select('*')
+        .eq('user_id', user.id)
+        .single()
 
-    supabase.storage.from('dokumen').createSignedUrl(filePath, 1800)
-      .then(({ data, error }) => {
-        if (data) {
-          setFileUrl(data.signedUrl)
-          pdfjs.getDocument(data.signedUrl).promise
-            .then(doc => setPdfDoc(doc) && setNumPages(doc.numPages))
-        }
-      })
-  }, [filePath, navigate])
+      const { data: signerList } = await supabase
+        .from('document_signers')
+        .select('id, signer_user_id, external_signer_id')
+        .eq('document_id', documentId)
 
-  const drawPages = () => {
+      setSigners(signerList)
+
+      const { data: signedUrlData } = await supabase.storage
+        .from('dokumen')
+        .createSignedUrl(filePath, 600)
+
+      if (!signedUrlData?.signedUrl) return
+
+      setFileUrl(signedUrlData.signedUrl)
+
+      const doc = await pdfjs.getDocument(signedUrlData.signedUrl).promise
+      setPdfDoc(doc)
+      setNumPages(doc.numPages)
+    }
+
+    if (documentId && filePath) init()
+    else navigate('/home/dashboard')
+  }, [documentId, filePath, navigate])
+
+  useEffect(() => {
     if (!pdfDoc) return
-    canvasRefs.current.slice(0, numPages).forEach((canvas, i) => {
-      pdfDoc.getPage(i + 1).then(page => {
+    canvasRefs.current = Array(numPages)
+      .fill()
+      .map((_, i) => canvasRefs.current[i] || React.createRef())
+
+    canvasRefs.current.forEach((canvasRef, i) => {
+      pdfDoc.getPage(i + 1).then((page) => {
+        const canvas = canvasRef.current
+        const context = canvas.getContext('2d')
         const viewport = page.getViewport({ scale: 1.5 })
-        const ctx = canvas.getContext('2d')
-        canvas.width = viewport.width
         canvas.height = viewport.height
-        page.render({ canvasContext: ctx, viewport })
+        canvas.width = viewport.width
+        page.render({ canvasContext: context, viewport })
       })
     })
+  }, [pdfDoc, numPages])
+
+  const handlePlace = () => {
+    if (!selectedSigner) return alert('Pilih penandatangan dahulu')
+    const newPh = {
+      id: Date.now(),
+      signer_id: selectedSigner,
+      page_number: currentPage,
+      x: 100,
+      y: 100,
+      width: 150,
+      height: 50,
+      type: 'signature',
+      label: 'Tanda Tangan'
+    }
+    setPlaceholders((prev) => [...prev, newPh])
   }
-
-  useEffect(() => { drawPages() }, [pdfDoc, numPages])
-
-  const [{ isOver }, drop] = useDrop({
-    accept: ELEMENTS.map(e => e.key),
-    drop: (item, monitor) => {
-      const offset = monitor.getClientOffset()
-      const canvasEl = canvasRefs.current[item.pageNum - 1]
-      const rect = canvasEl.getBoundingClientRect()
-      const x = offset.x - rect.left
-      const y = offset.y - rect.top
-      const newPh = { ...item, x, y, width: 120, height: 40, id: Date.now() }
-      setPlaceholders(prev => [...prev, newPh])
-    },
-    collect: monitor => ({ isOver: monitor.isOver() }),
-  })
 
   const handleSave = async () => {
     for (let ph of placeholders) {
       await supabase.from('signature_positions').insert({
         document_id: documentId,
-        signer_id: user.id,
-        page_number: ph.pageNum,
+        signer_id: ph.signer_id,
+        page_number: ph.page_number,
         x: ph.x,
         y: ph.y,
         width: ph.width,
         height: ph.height,
         placeholder_label: ph.label,
+        type: ph.type,
+        is_required: true,
       })
     }
-    alert('Posisi disimpan!') && navigate('/home/dashboard')
+    alert('Berhasil menyimpan posisi')
+    navigate('/home/terkirim')
   }
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <Navbar user={user} userProfile={userProfile} onLogout={() => supabase.auth.signOut() && navigate('/login')} />
-
-      <div className="flex flex-1">
-        {/* Sidebar thumbnail */}
-        <div className="w-20 bg-gray-200 p-2 overflow-auto">
-          {Array.from({ length: numPages }, (_, i) => (
-            <div key={i} className="border m-1 p-2 text-center">{i+1}</div>
-          ))}
+    <div className="min-h-screen">
+      <Navbar />
+      <div className="flex h-full">
+        {/* Sidebar */}
+        <div className="w-64 p-4 bg-gray-100 border-r">
+          <h2 className="font-bold text-lg mb-2">Penandatangan</h2>
+          <select
+            className="w-full border p-2 mb-4"
+            onChange={(e) => setSelectedSigner(e.target.value)}
+          >
+            <option value="">-- Pilih --</option>
+            {signers.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.signer_user_id || s.external_signer_id}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={handlePlace}
+            className="bg-blue-600 text-white px-4 py-2 w-full rounded"
+          >
+            Tambah Tanda Tangan
+          </button>
+          <button
+            onClick={handleSave}
+            className="bg-green-600 text-white px-4 py-2 w-full mt-4 rounded"
+          >
+            Simpan
+          </button>
         </div>
 
-        {/* PDF Canvas */}
-        <div className="flex-1 p-4 bg-gray-100 overflow-auto" ref={drop}>
+        {/* PDF Area */}
+        <div className="flex-1 p-4 overflow-auto">
           {Array.from({ length: numPages }, (_, i) => (
-            <div key={i} className="relative mb-8">
-              <canvas ref={el => canvasRefs.current[i] = el} />
-              {placeholders.filter(p => p.pageNum === i + 1).map(ph => (
-                <Rnd
-                  key={ph.id}
-                  size={{ width: ph.width, height: ph.height }}
-                  position={{ x: ph.x, y: ph.y }}
-                  onDragStop={(e, d) => {
-                    setPlaceholders(prev => prev.map(z => z.id===ph.id ? { ...z, x: d.x, y: d.y } : z))
-                  }}
-                  onResizeStop={(e, dir, ref, delta, pos) => {
-                    setPlaceholders(prev => prev.map(z => z.id===ph.id ? {
-                      ...z,
-                      width: ref.offsetWidth,
-                      height: ref.offsetHeight,
-                      x: pos.x,
-                      y: pos.y
-                    } : z))
-                  }}
-                  bounds="parent"
-                  style={{ border: '1px dashed blue', backgroundColor: 'rgba(0,0,255,0.1)' }}
-                >
-                  {ph.label}
-                </Rnd>
-              ))}
+            <div key={i} className="relative mb-8 border">
+              <canvas
+                ref={(el) => (canvasRefs.current[i] = el)}
+                className="shadow"
+              />
+              {placeholders
+                .filter((ph) => ph.page_number === i + 1)
+                .map((ph) => (
+                  <Rnd
+                    key={ph.id}
+                    size={{ width: ph.width, height: ph.height }}
+                    position={{ x: ph.x, y: ph.y }}
+                    bounds="parent"
+                    onDragStop={(e, d) => {
+                      setPlaceholders((prev) =>
+                        prev.map((p) =>
+                          p.id === ph.id ? { ...p, x: d.x, y: d.y } : p
+                        )
+                      )
+                    }}
+                    onResizeStop={(e, dir, ref, delta, pos) => {
+                      setPlaceholders((prev) =>
+                        prev.map((p) =>
+                          p.id === ph.id
+                            ? {
+                                ...p,
+                                width: ref.offsetWidth,
+                                height: ref.offsetHeight,
+                                x: pos.x,
+                                y: pos.y,
+                              }
+                            : p
+                        )
+                      )
+                    }}
+                    className="absolute border-2 border-blue-500 bg-blue-100 text-center text-xs flex items-center justify-center"
+                  >
+                    {ph.label}
+                  </Rnd>
+                ))}
             </div>
           ))}
         </div>
-
-        {/* Panel kanan */}
-        <div className="w-64 bg-gray-200 p-4 flex flex-col">
-          <h2 className="font-semibold mb-2">Pilihan Tanda Tangan</h2>
-          <h3 className="font-medium">Wajib:</h3>
-          {ELEMENTS.filter(e => e.required).map(el => (
-            <DraggableItem key={el.key} type={el.key} label={el.label} />
-          ))}
-          <h3 className="font-medium mt-4">Opsional:</h3>
-          {ELEMENTS.filter(e => !e.required).map(el => (
-            <DraggableItem key={el.key} type={el.key} label={el.label} />
-          ))}
-          <button onClick={handleSave} className="mt-auto bg-blue-500 text-white py-2 rounded">Kirim Untuk Tanda Tangan</button>
-        </div>
       </div>
-    </div>
-  )
-}
-
-// DraggableItem
-function DraggableItem({ type, label }) {
-  const [, drag] = useDrag({ item: { type, label, pageNum: 1 }, type })
-  return (
-    <div ref={drag} className="border p-2 mb-2 bg-white cursor-move">
-      {label}
     </div>
   )
 }

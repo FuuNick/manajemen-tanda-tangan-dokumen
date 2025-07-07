@@ -11,13 +11,18 @@ export default function Kontak() {
   const [showModal, setShowModal] = useState(false)
   const [editingData, setEditingData] = useState(null)
 
+  // Ambil data dari Supabase
   const fetchKontak = async () => {
     const { data, error } = await supabase
       .from('contacts')
       .select('*')
       .order('created_at', { ascending: false })
 
-    if (!error) setKontak(data)
+    if (!error) {
+      setKontak(data)
+    } else {
+      console.error('Gagal mengambil kontak:', error.message)
+    }
   }
 
   useEffect(() => {
@@ -60,17 +65,45 @@ export default function Kontak() {
   }
 
   const handleSave = async (data) => {
-    if (editingData) {
-      await supabase.from('contacts').update(data).eq('id', editingData.id)
+    console.log('Data yang akan disimpan:', data)
+
+    if (data.id) {
+      // Update kontak
+      const { error } = await supabase
+        .from('contacts')
+        .update({
+          name: data.name,
+          email: data.email,
+          wa_number: data.wa_number
+        })
+        .eq('id', data.id)
+
+      if (error) {
+        console.error('Gagal update kontak:', error.message)
+        return
+      }
     } else {
-      await supabase.from('contacts').insert(data)
+      // Tambah kontak baru
+      const { error } = await supabase
+        .from('contacts')
+        .insert({
+          name: data.name,
+          email: data.email,
+          wa_number: data.wa_number
+        })
+
+      if (error) {
+        console.error('Gagal tambah kontak:', error.message)
+        return
+      }
     }
+
     setShowModal(false)
     fetchKontak()
   }
 
   const handleDelete = async (id) => {
-    const confirm = window.confirm('Yakin hapus kontak ini?')
+    const confirm = window.confirm('Yakin ingin menghapus kontak ini?')
     if (!confirm) return
     await supabase.from('contacts').delete().eq('id', id)
     fetchKontak()
