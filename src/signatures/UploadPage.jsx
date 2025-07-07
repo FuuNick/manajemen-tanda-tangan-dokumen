@@ -1,4 +1,3 @@
-// src/pages/UploadPage.jsx
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../service/supabase'
@@ -50,31 +49,42 @@ export default function UploadPage() {
       const fileName = `document_${documentId}.${fileExt}`
       const filePath = `${user.id}/${fileName}`
 
-      // Upload file ke Supabase Storage
+      // ✅ Upload file ke bucket "documents"
       const { error: uploadError } = await supabase.storage
-        .from('dokumen')
-        .upload(filePath, file)
+        .from('documents')
+        .upload(filePath, file, {
+          upsert: false
+        })
 
       if (uploadError) throw uploadError
 
-      // Simpan metadata dokumen ke tabel documents
+      // ✅ Ambil URL publik (opsional)
+      const { data: publicUrlData } = supabase.storage
+        .from('documents')
+        .getPublicUrl(filePath)
+
+      // ✅ Simpan metadata dokumen ke tabel Supabase
       const { error: insertError } = await supabase.from('documents').insert([
         {
           id: documentId,
           file_url: filePath,
           owner_id: user.id,
           created_by: user.id,
-          status: 'draft'
+          status: 'draft',
+          file_name: file.name,
+          file_type: file.type,
+          file_size: file.size
         }
       ])
 
       if (insertError) throw insertError
 
-      // Navigasi ke halaman Choose Signer
+      // ✅ Navigasi ke halaman berikutnya
       navigate('/choose-signer', {
         state: {
           documentId,
-          filePath
+          filePath,
+          publicUrl: publicUrlData?.publicUrl || null
         }
       })
     } catch (error) {
@@ -122,9 +132,7 @@ export default function UploadPage() {
           />
 
           {selectedFile && (
-            <p className="mt-2 text-green-600 text-sm">
-              {selectedFile.name}
-            </p>
+            <p className="mt-2 text-green-600 text-sm">{selectedFile.name}</p>
           )}
         </div>
       </main>

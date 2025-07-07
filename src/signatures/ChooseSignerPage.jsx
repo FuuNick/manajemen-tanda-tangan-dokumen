@@ -1,192 +1,243 @@
-// src/pages/ChooseSignerPage.jsx
 import React, { useState, useEffect } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { supabase } from '../service/supabase'
-import { v4 as uuidv4 } from 'uuid'
 
 export default function ChooseSignerPage() {
+  const { state } = useLocation()
   const navigate = useNavigate()
-  const location = useLocation()
-  const { documentId, filePath } = location.state || {}
 
   const [user, setUser] = useState(null)
-  const [signers, setSigners] = useState([])
-  const [newSigner, setNewSigner] = useState({
-    name: '',
-    email: '',
-    type: 'internal'
-  })
+  const [signMode, setSignMode] = useState('self')
+  const [signingType, setSigningType] = useState('parallel')
+  const [internalUsers, setInternalUsers] = useState([])
+  const [internalSigners, setInternalSigners] = useState([])
+  const [externalSigners, setExternalSigners] = useState([])
+
+  const [newExternal, setNewExternal] = useState({ name: '', email: '' })
+
+  const { documentId, filePath } = state || {}
 
   useEffect(() => {
-    const fetchUser = async () => {
-      const { data: auth } = await supabase.auth.getUser()
-      if (!auth?.user) {
-        navigate('/login')
-        return
-      }
-      setUser(auth.user)
+    const init = async () => {
+      const { data: { user: authUser } } = await supabase.auth.getUser()
+      if (!authUser) return navigate('/login')
+
+      setUser(authUser)
+
+      const { data: users } = await supabase
+        .from('user_profiles')
+        .select('user_id, name, email')
+        .neq('user_id', authUser.id)
+
+      setInternalUsers(users || [])
     }
 
-    fetchUser()
+    init()
   }, [navigate])
 
-  const handleAddSigner = async () => {
-    if (!newSigner.name || !newSigner.email) {
-      alert('Nama dan email wajib diisi.')
-      return
+  const addInternalSigner = (id) => {
+    if (!internalSigners.includes(id)) {
+      setInternalSigners([...internalSigners, id])
     }
-
-    const nextOrder = signers.length + 1
-    const signerId = uuidv4()
-
-    let signerData = {
-      id: signerId,
-      document_id: documentId,
-      signing_order: nextOrder,
-      status: 'pending',
-      created_by: user.id
-    }
-
-    if (newSigner.type === 'internal') {
-      // Cari user internal berdasarkan email
-      const { data: internalUser, error } = await supabase
-        .from('user_profiles')
-        .select('user_id')
-        .eq('email', newSigner.email)
-        .single()
-
-      if (error || !internalUser) {
-        alert('User internal tidak ditemukan.')
-        return
-      }
-
-      signerData.signer_user_id = internalUser.user_id
-    } else {
-      // Tambah external signer
-      const { data: external, error: extErr } = await supabase
-        .from('external_signers')
-        .insert([{
-          id: uuidv4(),
-          name: newSigner.name,
-          email: newSigner.email
-        }])
-        .select()
-        .single()
-
-      if (extErr) {
-        console.error(extErr)
-        alert('Gagal menyimpan penandatangan eksternal.')
-        return
-      }
-
-      signerData.external_signer_id = external.id
-    }
-
-    const { error: insertErr } = await supabase
-      .from('document_signers')
-      .insert([signerData])
-
-    if (insertErr) {
-      console.error(insertErr)
-      alert('Gagal menambahkan penandatangan.')
-      return
-    }
-
-    setSigners([...signers, {
-      id: signerId,
-      ...newSigner,
-      signing_order: nextOrder,
-      signer_user_id: signerData.signer_user_id,
-      external_signer_id: signerData.external_signer_id
-    }])
-
-    setNewSigner({ name: '', email: '', type: 'internal' })
   }
 
-  const handleNext = () => {
-    if (!documentId || !filePath) {
-      alert('Dokumen tidak valid.')
-      return
-    }
+  const addExternalSigner = () => {
+    if (!newExternal.name || !newExternal.email) return
+    setExternalSigners([...externalSigners, { ...newExternal }])
+    setNewExternal({ name: '', email: '' })
+  }
 
-    navigate('/set-signature-position', {
-      state: { documentId, filePath }
-    })
+  const handleSubmit = async () => {
+    try {
+      // Insert external signers first
+      const externalInsertResults = []
+      for (const signer of externalSigners) {
+        const { data, error } = await supabase
+          .from('external_signers')
+          .insert([{ name: signer.name, email: signer.email }])
+          .select()
+          .single()
+
+        if (error) throw error
+        externalInsertResults.push(data)
+      }
+
+      // Build all signers list
+      const signers = []
+
+      let order = 1
+
+      if (signMode === 'self') {
+        signers.push({
+          document_id: documentId,
+          signer_user_id: user.id,
+          signing_order: 1,
+          created_by: user.id
+        })
+      } else {
+        // Internal
+        for (const internalId of internalSigners) {
+          signers.push({
+            document_id: documentId,
+            signer_user_id: internalId,
+            signing_order: signingType === 'sequential' ? order++ : null,
+            created_by: user.id
+          })
+        }
+
+        // External
+        for (const ext of externalInsertResults) {
+          signers.push({
+            document_id: documentId,
+            external_signer_id: ext.id,
+            signing_order: signingType === 'sequential' ? order++ : null,
+            created_by: user.id
+          })
+        }
+      }
+
+      const { error: signerInsertError } = await supabase
+        .from('document_signers')
+        .insert(signers)
+
+      if (signerInsertError) throw signerInsertError
+
+      // Update status dokumen
+      await supabase
+        .from('documents')
+        .update({ status: 'sent' })
+        .eq('id', documentId)
+
+      // Kirim email ke penandatangan (simulasi)
+      for (const ext of externalInsertResults) {
+        await fetch(`${import.meta.env.VITE_SUPABASE_FUNCTION_URL}/send-signing-invite`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+          },
+          body: JSON.stringify({
+            toEmail: ext.email,
+            subject: 'Permintaan Tanda Tangan',
+            message: `Silakan tanda tangani dokumen: ${filePath}`
+          })
+        })
+      }
+
+      navigate('/signature-editor', { state: { documentId } })
+    } catch (error) {
+      console.error(error)
+      alert('Gagal menyimpan penandatangan')
+    }
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
+    <div className="p-6 max-w-3xl mx-auto bg-white rounded shadow">
       <h1 className="text-2xl font-bold mb-4">Pilih Penandatangan</h1>
 
-      <div className="bg-white rounded p-4 shadow mb-6 max-w-xl">
-        <h2 className="text-lg font-semibold mb-3">Tambah Penandatangan</h2>
-
-        <div className="mb-3">
-          <label className="block text-sm text-gray-700 mb-1">Tipe Penandatangan</label>
-          <select
-            value={newSigner.type}
-            onChange={(e) => setNewSigner({ ...newSigner, type: e.target.value })}
-            className="w-full border rounded p-2"
-          >
-            <option value="internal">User Internal</option>
-            <option value="external">Pihak Eksternal</option>
-          </select>
+      <div className="mb-4">
+        <label className="font-semibold mb-2 block">Mode Tanda Tangan</label>
+        <div className="space-x-4">
+          <label>
+            <input
+              type="radio"
+              checked={signMode === 'self'}
+              onChange={() => setSignMode('self')}
+            />{' '}
+            Hanya Saya
+          </label>
+          <label>
+            <input
+              type="radio"
+              checked={signMode === 'multi'}
+              onChange={() => setSignMode('multi')}
+            />{' '}
+            Beberapa Orang
+          </label>
         </div>
-
-        <div className="mb-3">
-          <label className="block text-sm text-gray-700 mb-1">Nama</label>
-          <input
-            type="text"
-            className="w-full border rounded p-2"
-            placeholder="Nama Lengkap"
-            value={newSigner.name}
-            onChange={(e) => setNewSigner({ ...newSigner, name: e.target.value })}
-          />
-        </div>
-
-        <div className="mb-3">
-          <label className="block text-sm text-gray-700 mb-1">Email</label>
-          <input
-            type="email"
-            className="w-full border rounded p-2"
-            placeholder="Alamat Email"
-            value={newSigner.email}
-            onChange={(e) => setNewSigner({ ...newSigner, email: e.target.value })}
-          />
-        </div>
-
-        <button
-          onClick={handleAddSigner}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
-        >
-          Tambah Penandatangan
-        </button>
       </div>
 
-      <div className="bg-white p-4 rounded shadow max-w-xl mb-6">
-        <h2 className="text-lg font-semibold mb-3">Daftar Penandatangan</h2>
-        {signers.length === 0 ? (
-          <p className="text-gray-500 text-sm">Belum ada penandatangan.</p>
-        ) : (
-          <ul className="space-y-2">
-            {signers.map((s, i) => (
-              <li key={s.id} className="border-b py-2 flex justify-between items-center">
-                <span>{i + 1}. {s.name} ({s.email}) [{s.type}]</span>
-                <span className="text-sm text-gray-500">Urutan #{s.signing_order}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+      {signMode === 'multi' && (
+        <>
+          <div className="mb-4">
+            <label className="font-semibold block mb-2">Mode Tanda Tangan</label>
+            <select
+              className="border px-2 py-1 rounded"
+              value={signingType}
+              onChange={(e) => setSigningType(e.target.value)}
+            >
+              <option value="parallel">Paralel</option>
+              <option value="sequential">Berurutan</option>
+            </select>
+          </div>
 
-      {signers.length > 0 && (
-        <button
-          onClick={handleNext}
-          className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded"
-        >
-          Lanjut ke Penempatan Tanda Tangan →
-        </button>
+          <div className="mb-4">
+            <label className="font-semibold block mb-2">Tambah Internal Signer</label>
+            <select
+              className="border px-2 py-1 rounded"
+              onChange={(e) => addInternalSigner(e.target.value)}
+              defaultValue=""
+            >
+              <option disabled value="">
+                Pilih pengguna...
+              </option>
+              {internalUsers.map((u) => (
+                <option key={u.user_id} value={u.user_id}>
+                  {u.name || u.email}
+                </option>
+              ))}
+            </select>
+            <ul className="mt-2 list-disc ml-5 text-sm text-gray-700">
+              {internalSigners.map((id) => {
+                const user = internalUsers.find((u) => u.user_id === id)
+                return <li key={id}>{user?.name || user?.email}</li>
+              })}
+            </ul>
+          </div>
+
+          <div className="mb-4">
+            <label className="font-semibold block mb-2">Tambah External Signer</label>
+            <div className="flex gap-2 mb-2">
+              <input
+                type="text"
+                placeholder="Nama"
+                value={newExternal.name}
+                onChange={(e) => setNewExternal({ ...newExternal, name: e.target.value })}
+                className="border px-2 py-1 rounded w-1/3"
+              />
+              <input
+                type="email"
+                placeholder="Email"
+                value={newExternal.email}
+                onChange={(e) => setNewExternal({ ...newExternal, email: e.target.value })}
+                className="border px-2 py-1 rounded w-1/3"
+              />
+              <button
+                onClick={addExternalSigner}
+                className="bg-blue-600 text-white px-4 py-1 rounded"
+              >
+                Tambah
+              </button>
+            </div>
+            <ul className="list-disc ml-5 text-sm text-gray-700">
+              {externalSigners.map((s, i) => (
+                <li key={i}>
+                  {s.name} ({s.email})
+                </li>
+              ))}
+            </ul>
+          </div>
+        </>
       )}
+
+      <div className="text-right">
+        <button
+          onClick={handleSubmit}
+          className="bg-green-600 text-white px-6 py-2 rounded hover:bg-green-700"
+        >
+          Kirim Dokumen
+        </button>
+      </div>
     </div>
   )
 }

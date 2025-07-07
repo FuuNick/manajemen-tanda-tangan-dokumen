@@ -26,6 +26,7 @@ import UploadPage from './signatures/UploadPage'
 import PDFView from './signatures/PdfViewer'
 import ChooseSignerPage from './signatures/ChooseSignerPage'
 import SetSignaturePositionPage from './signatures/SetSignaturePosition'
+import SignatureEditor from './signatures/SignatureEditor'
 
 
 export default function App() {
@@ -83,6 +84,14 @@ export default function App() {
           element={
             <PrivateRoute>
               <SetSignaturePositionPage />
+            </PrivateRoute>
+          }
+        />      
+        <Route
+          path="/signature-editor"
+          element={
+            <PrivateRoute>
+              <SignatureEditor />
             </PrivateRoute>
           }
         />      
