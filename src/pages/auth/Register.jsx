@@ -1,6 +1,6 @@
 // src/pages/auth/Register.jsx
 import React, { useState } from 'react'
-import { supabase } from '../../service/supabase'
+import { supabase } from '../../service/supabase' // <<< Path ini SUDAH BENAR berdasarkan struktur folder Anda
 import { useNavigate } from 'react-router-dom'
 
 export default function Register() {
@@ -21,7 +21,7 @@ export default function Register() {
     if (error) {
       setError(error.message)
     } else {
-      alert('Cek email untuk verifikasi!')
+      alert('Cek email untuk verifikasi!') // Ingat, sebaiknya gunakan modal custom daripada alert()
       navigate('/login')
     }
   }

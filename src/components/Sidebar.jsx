@@ -79,4 +79,3 @@ function MenuItem({ icon, text, path }) {
     </NavLink>
   )
 }
-
